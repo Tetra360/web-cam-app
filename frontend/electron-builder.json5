@@ -15,6 +15,10 @@
     {
       "from": "backend_exe",
       "to": "backend_exe"
+    },
+    {
+      "from": "../backend/models",
+      "to": "models"
     }
   ],
   "mac": {

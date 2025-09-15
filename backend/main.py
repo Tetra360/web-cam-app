@@ -4,6 +4,15 @@ import time
 from flask import Flask, Response, jsonify
 from flask_cors import CORS
 
+# 物体検出ライブラリのインポートを安全に行う
+try:
+    from ultralytics import YOLO
+    OBJECT_DETECTION_AVAILABLE = True
+except ImportError:
+    print("ultralyticsがインストールされていません。物体検出機能は無効になります。")
+    OBJECT_DETECTION_AVAILABLE = False
+    YOLO = None
+
 app = Flask(__name__)
 CORS(app)  # CORSを有効にしてフロントエンドからのアクセスを許可
 
@@ -11,6 +20,26 @@ CORS(app)  # CORSを有効にしてフロントエンドからのアクセスを
 camera = None
 camera_lock = threading.Lock()
 is_streaming = False
+object_detection_model = None
+object_detection_enabled = False
+
+def initialize_object_detection_model():
+    """物体検出モデルを初期化する。"""
+    global object_detection_model
+    
+    if not OBJECT_DETECTION_AVAILABLE:
+        print("ultralyticsが利用できません。物体検出機能は無効です。")
+        return False
+    
+    try:
+        model_path = 'models/yolo11n.pt'
+        object_detection_model = YOLO(model_path)
+        print(f"物体検出モデルを読み込みました: {model_path}")
+        return True
+    except Exception as e:
+        print(f"物体検出モデルの読み込みに失敗しました: {e}")
+        object_detection_model = None
+        return False
 
 def get_camera():
     """カメラオブジェクトを取得する。見つからなければNoneを返す。"""
@@ -33,7 +62,7 @@ def release_camera():
 
 def generate_frames():
     """カメラフレームを生成するジェネレータ。"""
-    global is_streaming
+    global is_streaming, object_detection_model, object_detection_enabled
 
     while is_streaming:
         cap = get_camera()
@@ -43,6 +72,16 @@ def generate_frames():
         ret, frame = cap.read()
         if not ret:
             break
+
+        # 物体検出が有効な場合、推論を実行
+        if object_detection_enabled and object_detection_model is not None:
+            try:
+                # 物体検出推論を実行
+                results = object_detection_model(frame)
+                # 推論結果を画像に描画
+                frame = results[0].plot()
+            except Exception as e:
+                print(f"物体検出推論エラー: {e}")
 
         # フレームをJPEGにエンコード
         ret, buffer = cv2.imencode('.jpg', frame)
@@ -92,10 +131,60 @@ def stop_stream():
     else:
         return jsonify({'status': 'already_stopped'})
 
+@app.route('/enable_object_detection', methods=['POST'])
+def enable_object_detection():
+    """物体検出を有効にする。"""
+    global object_detection_enabled, object_detection_model
+    
+    if not OBJECT_DETECTION_AVAILABLE:
+        return jsonify({'status': 'error', 'message': 'ultralyticsがインストールされていません'})
+    
+    if object_detection_model is None:
+        if initialize_object_detection_model():
+            object_detection_enabled = True
+            return jsonify({'status': 'enabled', 'message': '物体検出を有効にしました'})
+        else:
+            return jsonify({'status': 'error', 'message': '物体検出モデルの読み込みに失敗しました'})
+    else:
+        object_detection_enabled = True
+        return jsonify({'status': 'enabled', 'message': '物体検出を有効にしました'})
+
+@app.route('/disable_object_detection', methods=['POST'])
+def disable_object_detection():
+    """物体検出を無効にする。"""
+    global object_detection_enabled
+    
+    object_detection_enabled = False
+    return jsonify({'status': 'disabled', 'message': '物体検出を無効にしました'})
+
+@app.route('/object_detection_status', methods=['GET'])
+def object_detection_status():
+    """物体検出の状態を取得する。"""
+    global object_detection_enabled, object_detection_model
+    
+    status = {
+        'available': OBJECT_DETECTION_AVAILABLE,
+        'enabled': object_detection_enabled,
+        'model_loaded': object_detection_model is not None
+    }
+    print(f"物体検出状態を返します: {status}")
+    return jsonify(status)
+
 if __name__ == '__main__':
     try:
         print("Flaskサーバーを起動しています...")
         print("フロントエンドから http://localhost:5000 にアクセスしてください")
+        
+        # 物体検出モデルの初期化を試行
+        if OBJECT_DETECTION_AVAILABLE:
+            print("物体検出モデルの初期化を試行中...")
+            if initialize_object_detection_model():
+                print("物体検出モデルが正常に読み込まれました")
+            else:
+                print("物体検出モデルの読み込みに失敗しました（オプション機能）")
+        else:
+            print("ultralyticsが利用できません。物体検出機能は無効です。")
+        
         app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
     except KeyboardInterrupt:
         print("サーバーを停止しています...")

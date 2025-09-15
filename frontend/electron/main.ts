@@ -75,6 +75,17 @@ function startBackendProcess() {
   console.log('process.resourcesPath:', process.resourcesPath)
   console.log('app.isPackaged:', app.isPackaged)
   
+  // modelsフォルダの存在確認
+  if (!VITE_DEV_SERVER_URL) {
+    const modelsPath = path.join(process.resourcesPath, 'models')
+    console.log('modelsフォルダパス:', modelsPath)
+    console.log('modelsフォルダ存在確認:', fs.existsSync(modelsPath))
+    if (fs.existsSync(modelsPath)) {
+      const modelFiles = fs.readdirSync(modelsPath)
+      console.log('modelsフォルダ内のファイル:', modelFiles)
+    }
+  }
+  
   backendProcess = spawn(backendPath, args, {
     stdio: ['ignore', 'pipe', 'pipe']
   })
@@ -146,6 +157,11 @@ function stopBackendProcess() {
 
 function createWindow() {
   win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
+    autoHideMenuBar: true, // メニューバーを自動非表示
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
