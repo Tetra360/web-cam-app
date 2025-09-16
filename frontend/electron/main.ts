@@ -274,10 +274,15 @@ function createWindow() {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
 
-  // バックエンドプロセスを起動（非同期で実行、ウィンドウ表示をブロックしない）
-  setImmediate(() => {
-    startBackendProcess()
-  })
+  // 開発環境では既にnpm run devでバックエンドが起動されているため、本番環境のみバックエンドを起動
+  if (!VITE_DEV_SERVER_URL) {
+    // 本番環境: バックエンドプロセスを起動（非同期で実行、ウィンドウ表示をブロックしない）
+    setImmediate(() => {
+      startBackendProcess()
+    })
+  } else {
+    console.log('開発環境: バックエンドはnpm run devで既に起動されています')
+  }
 }
 
 // すべてのウィンドウが閉じられたときに終了する（macOSを除く）。
@@ -286,11 +291,16 @@ function createWindow() {
 // すべてのウィンドウが閉じられたときのイベントハンドラー
 app.on('window-all-closed', async () => {
   if (process.platform !== 'darwin') {  // macOS以外の場合
-    // バックエンドプロセスを停止してからアプリを終了
-    stopBackendProcess()
-    
-    // すべてのbackend.exeプロセスを強制終了（残存プロセスのクリーンアップ）
-    await killAllBackendProcesses()
+    // 開発環境ではバックエンドプロセスはnpm run devで管理されているため、本番環境のみ停止
+    if (!VITE_DEV_SERVER_URL) {
+      // 本番環境: バックエンドプロセスを停止してからアプリを終了
+      stopBackendProcess()
+      
+      // すべてのbackend.exeプロセスを強制終了（残存プロセスのクリーンアップ）
+      await killAllBackendProcesses()
+    } else {
+      console.log('開発環境: バックエンドプロセスはnpm run devで管理されています')
+    }
     
     // プロセス終了を待ってからアプリを終了（1秒の遅延）
     setTimeout(() => {
@@ -311,8 +321,13 @@ app.on('activate', () => {
 
 // アプリケーション終了前のクリーンアップ処理
 app.on('before-quit', async () => {
-  stopBackendProcess()  // バックエンドプロセスを停止
-  await killAllBackendProcesses()  // 残存プロセスをクリーンアップ
+  // 開発環境ではバックエンドプロセスはnpm run devで管理されているため、本番環境のみ停止
+  if (!VITE_DEV_SERVER_URL) {
+    stopBackendProcess()  // バックエンドプロセスを停止
+    await killAllBackendProcesses()  // 残存プロセスをクリーンアップ
+  } else {
+    console.log('開発環境: バックエンドプロセスはnpm run devで管理されています')
+  }
 })
 
 /**
@@ -332,8 +347,12 @@ function preloadBackendPath() {
 
 // アプリケーション起動時の初期化処理
 app.whenReady().then(async () => {
-  // 既存のbackend.exeプロセスを終了（前回の起動で残存したプロセスのクリーンアップ）
-  await killAllBackendProcesses()
+  // 本番環境のみ既存のbackend.exeプロセスを終了（前回の起動で残存したプロセスのクリーンアップ）
+  if (!VITE_DEV_SERVER_URL) {
+    await killAllBackendProcesses()
+  } else {
+    console.log('開発環境: バックエンドプロセスはnpm run devで管理されています')
+  }
   
   // バックエンドパスを事前に解決（起動時の高速化のため）
   preloadBackendPath()

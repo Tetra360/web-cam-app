@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react";
+import "./loading.css";
 
 function App() {
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [streamUrl, setStreamUrl] = useState("");
 	const [objectDetectionEnabled, setObjectDetectionEnabled] = useState(false);
 	const [objectDetectionAvailable, setObjectDetectionAvailable] = useState(false);
+	const [isLoading, setIsLoading] = useState(true);
+	const [backendConnected, setBackendConnected] = useState(false);
+	const [isSystemStarting, setIsSystemStarting] = useState(false);
 
 	// バックエンドのベースURLを動的に決定する関数
 	const getBackendBaseUrl = () => {
@@ -16,6 +20,49 @@ function App() {
 		return 'http://localhost:5000';
 	};
 
+	// バックエンドとの接続確認を行う関数（5秒タイムアウト）
+	const checkBackendConnection = async () => {
+		const startTime = Date.now();
+		const timeoutDuration = 5000; // 5秒
+		
+		const attemptConnection = async (): Promise<void> => {
+			// 5秒経過したかチェック
+			if (Date.now() - startTime >= timeoutDuration) {
+				console.error("バックエンド接続タイムアウト（5秒）");
+				setBackendConnected(false);
+				setIsLoading(false);
+				return;
+			}
+
+			try {
+				console.log("バックエンドとの接続を確認中...");
+				const response = await fetch(`${getBackendBaseUrl()}/health`, {
+					method: "GET",
+				});
+
+				if (response.ok) {
+					const data = await response.json();
+					console.log("バックエンド接続成功:", data);
+					setBackendConnected(true);
+					setIsLoading(false);
+					return;
+				} else {
+					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+				}
+			} catch (error) {
+				console.log("バックエンド接続エラー（再試行中）:", error);
+				// 200ms待ってから再試行（より高速な接続確認）
+				setTimeout(() => {
+					if (isLoading) { // まだローディング中の場合は再試行
+						attemptConnection();
+					}
+				}, 200);
+			}
+		};
+
+		await attemptConnection();
+	};
+
 	// ストリームURLを更新する関数
 	const updateStreamUrl = () => {
 		setStreamUrl(`${getBackendBaseUrl()}/video_feed?t=${Date.now()}`);
@@ -23,18 +70,37 @@ function App() {
 
 	// 物体検出状態を取得する関数
 	const checkObjectDetectionStatus = async () => {
+		// バックエンドが接続されていない場合は実行しない
+		if (!backendConnected) {
+			return;
+		}
+
 		try {
+			console.log("物体検出状態を確認中...");
 			const response = await fetch(`${getBackendBaseUrl()}/object_detection_status`);
+			console.log("物体検出状態レスポンス:", response.status, response.statusText);
+			
 			if (response.ok) {
 				const data = await response.json();
-				console.log("物体検出状態:", data);
+				console.log("物体検出状態データ:", data);
 				setObjectDetectionAvailable(data.available);
 				setObjectDetectionEnabled(data.enabled);
+				
+				// デバッグ情報を表示
+				if (!data.available) {
+					console.warn("物体検出機能が利用できません。ultralyticsがインストールされていない可能性があります。");
+				}
 			} else {
-				console.error("物体検出状態取得失敗:", response.status);
+				console.error("物体検出状態取得失敗:", response.status, response.statusText);
+				// エラー時は利用不可として設定
+				setObjectDetectionAvailable(false);
+				setObjectDetectionEnabled(false);
 			}
 		} catch (error) {
 			console.error("物体検出状態取得エラー:", error);
+			// エラー時は利用不可として設定
+			setObjectDetectionAvailable(false);
+			setObjectDetectionEnabled(false);
 		}
 	};
 
@@ -95,26 +161,59 @@ function App() {
 
 	// ストリーミング開始
 	const startStream = async () => {
-		try {
-			const response = await fetch(`${getBackendBaseUrl()}/start_stream`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-			});
+		setIsSystemStarting(true);
+		let isCancelled = false;
 
-			if (response.ok) {
-				setIsStreaming(true);
-				updateStreamUrl();
-				// ストリーミング開始後に物体検出状態を再確認
-				checkObjectDetectionStatus();
-			} else {
-				alert("ストリーム開始に失敗しました");
+		// 20秒後に強制的にタイムアウトを発動
+		const timeoutId = setTimeout(() => {
+			if (!isCancelled) {
+				console.error("ストリーム開始タイムアウト（20秒）");
+				alert("システムの起動がタイムアウトしました（20秒）。バックエンドサーバーが起動していることを確認してください。");
+				setIsSystemStarting(false);
+				isCancelled = true;
 			}
-		} catch (error) {
-			console.error("ストリーム開始エラー:", error);
-			alert("ストリーム開始に失敗しました");
-		}
+		}, 20000);
+
+		const attemptStartStream = async (): Promise<void> => {
+			// キャンセルされた場合は処理を停止
+			if (isCancelled) {
+				return;
+			}
+
+			try {
+				console.log("ストリーム開始を試行中...");
+				const response = await fetch(`${getBackendBaseUrl()}/start_stream`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+				});
+
+				if (response.ok) {
+					console.log("ストリーム開始成功");
+					clearTimeout(timeoutId); // タイムアウトをクリア
+					setIsStreaming(true);
+					setIsSystemStarting(false);
+					isCancelled = true;
+					updateStreamUrl();
+					// ストリーミング開始後に物体検出状態を再確認
+					checkObjectDetectionStatus();
+					return;
+				} else {
+					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+				}
+			} catch (error) {
+				console.log("ストリーム開始エラー（再試行中）:", error);
+				// 500ms待ってから再試行（より高速な再試行）
+				setTimeout(() => {
+					if (!isCancelled) { // キャンセルされていない場合は再試行
+						attemptStartStream();
+					}
+				}, 500);
+			}
+		};
+
+		await attemptStartStream();
 	};
 
 	// ストリーミング停止
@@ -139,16 +238,29 @@ function App() {
 		}
 	};
 
-	// コンポーネントマウント時に物体検出状態を確認
+	// コンポーネントマウント時にバックエンド接続を確認
 	useEffect(() => {
-		checkObjectDetectionStatus();
+		checkBackendConnection();
 	}, []);
 
+	// バックエンド接続後に物体検出状態を確認
+	useEffect(() => {
+		if (backendConnected) {
+			checkObjectDetectionStatus();
+		}
+	}, [backendConnected]);
+
+
+	// メイン画面（バックエンド接続済み）
 	return (
 		<div className="flex flex-col h-screen">
 			{/* 映像表示エリア */}
 			<div className="flex-1 bg-black flex items-center justify-center">
-				{streamUrl ? (
+				{isSystemStarting ? (
+					<div className="flex justify-center items-center" aria-label="読み込み中">
+						<div className="loader"></div>
+					</div>
+				) : streamUrl ? (
 					<img
 						src={streamUrl}
 						alt="カメラ映像"
@@ -163,14 +275,14 @@ function App() {
 			<div className="flex justify-center gap-4 p-4 bg-gray-800">
 				<button
 					className={`px-6 py-3 rounded text-white font-medium ${
-						isStreaming
+						isStreaming || isSystemStarting
 							? "bg-gray-600 cursor-not-allowed"
 							: "bg-green-600 hover:bg-green-700"
 					}`}
 					onClick={startStream}
-					disabled={isStreaming}
+					disabled={isStreaming || isSystemStarting}
 				>
-					開始
+					{isSystemStarting ? "システム起動中..." : "開始"}
 				</button>
 				<button
 					className={`px-6 py-3 rounded text-white font-medium ${
@@ -200,6 +312,7 @@ function App() {
 					物体検出 {objectDetectionEnabled ? "ON" : "OFF"}
 					{!objectDetectionAvailable && " (利用不可)"}
 				</button>
+				
 			</div>
 		</div>
 	);

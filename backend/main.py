@@ -4,14 +4,9 @@ import time
 from flask import Flask, Response, jsonify
 from flask_cors import CORS
 
-# 物体検出ライブラリのインポートを安全に行う
-try:
-    from ultralytics import YOLO
-    OBJECT_DETECTION_AVAILABLE = True
-except ImportError:
-    print("ultralyticsがインストールされていません。物体検出機能は無効になります。")
-    OBJECT_DETECTION_AVAILABLE = False
-    YOLO = None
+# 物体検出ライブラリのインポートは初回有効化時まで遅延
+OBJECT_DETECTION_AVAILABLE = None  # None: 未確認, True: 利用可能, False: 利用不可
+YOLO = None
 
 app = Flask(__name__)
 CORS(app)  # CORSを有効にしてフロントエンドからのアクセスを許可
@@ -23,11 +18,31 @@ is_streaming = False
 object_detection_model = None
 object_detection_enabled = False
 
+def check_ultralytics_availability():
+    """ultralyticsの利用可能性を確認し、必要に応じてインポートする。"""
+    global OBJECT_DETECTION_AVAILABLE, YOLO
+    
+    if OBJECT_DETECTION_AVAILABLE is not None:
+        return OBJECT_DETECTION_AVAILABLE
+    
+    print("ultralyticsの利用可能性を確認中...")
+    try:
+        from ultralytics import YOLO
+        OBJECT_DETECTION_AVAILABLE = True
+        print("ultralyticsが利用可能です。")
+        return True
+    except ImportError:
+        print("ultralyticsがインストールされていません。物体検出機能は無効になります。")
+        OBJECT_DETECTION_AVAILABLE = False
+        YOLO = None
+        return False
+
 def initialize_object_detection_model():
     """物体検出モデルを初期化する。"""
     global object_detection_model
     
-    if not OBJECT_DETECTION_AVAILABLE:
+    # まずultralyticsの利用可能性を確認
+    if not check_ultralytics_availability():
         print("ultralyticsが利用できません。物体検出機能は無効です。")
         return False
     
@@ -140,7 +155,8 @@ def enable_object_detection():
     """物体検出を有効にする。"""
     global object_detection_enabled, object_detection_model
     
-    if not OBJECT_DETECTION_AVAILABLE:
+    # 初回有効化時にultralyticsの利用可能性を確認
+    if not check_ultralytics_availability():
         return jsonify({'status': 'error', 'message': 'ultralyticsがインストールされていません'})
     
     if object_detection_model is None:
@@ -165,13 +181,26 @@ def disable_object_detection():
     object_detection_enabled = False
     return jsonify({'status': 'disabled', 'message': '物体検出を無効にしました'})
 
+@app.route('/health', methods=['GET'])
+def health():
+    """ヘルスチェックエンドポイント。"""
+    return jsonify({
+        'status': 'healthy',
+        'object_detection_available': OBJECT_DETECTION_AVAILABLE if OBJECT_DETECTION_AVAILABLE is not None else False,
+        'streaming': is_streaming
+    })
+
 @app.route('/object_detection_status', methods=['GET'])
 def object_detection_status():
     """物体検出の状態を取得する。"""
     global object_detection_enabled, object_detection_model
     
+    # 初回状態確認時にultralyticsの利用可能性を確認
+    if OBJECT_DETECTION_AVAILABLE is None:
+        check_ultralytics_availability()
+    
     status = {
-        'available': OBJECT_DETECTION_AVAILABLE,
+        'available': OBJECT_DETECTION_AVAILABLE if OBJECT_DETECTION_AVAILABLE is not None else False,
         'enabled': object_detection_enabled,
         'model_loaded': object_detection_model is not None
     }
@@ -183,11 +212,8 @@ if __name__ == '__main__':
         print("Flaskサーバーを起動しています...")
         print("フロントエンドから http://localhost:5000 にアクセスしてください")
         
-        # ultralyticsの可用性を確認（初期化は行わない）
-        if OBJECT_DETECTION_AVAILABLE:
-            print("ultralyticsが利用可能です。物体検出機能は初回有効化時に読み込まれます。")
-        else:
-            print("ultralyticsが利用できません。物体検出機能は無効です。")
+        # ultralyticsのインポートは初回有効化時まで遅延
+        print("ultralyticsのインポートは初回物体検出有効化時まで遅延されます。")
         
         app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
     except KeyboardInterrupt:
