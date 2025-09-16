@@ -32,9 +32,13 @@ def initialize_object_detection_model():
         return False
     
     try:
+        print("物体検出モデルの読み込みを開始しています...")
         model_path = 'models/yolo11n.pt'
+        print(f"モデルファイル: {model_path}")
+        
+        # モデル読み込み（時間がかかる処理）
         object_detection_model = YOLO(model_path)
-        print(f"物体検出モデルを読み込みました: {model_path}")
+        print(f"物体検出モデルを正常に読み込みました: {model_path}")
         return True
     except Exception as e:
         print(f"物体検出モデルの読み込みに失敗しました: {e}")
@@ -140,13 +144,17 @@ def enable_object_detection():
         return jsonify({'status': 'error', 'message': 'ultralyticsがインストールされていません'})
     
     if object_detection_model is None:
+        print("物体検出モデルが未初期化のため、初期化を開始します...")
         if initialize_object_detection_model():
             object_detection_enabled = True
-            return jsonify({'status': 'enabled', 'message': '物体検出を有効にしました'})
+            print("物体検出が有効になりました")
+            return jsonify({'status': 'enabled', 'message': '物体検出を有効にしました（モデル読み込み完了）'})
         else:
+            print("物体検出モデルの初期化に失敗しました")
             return jsonify({'status': 'error', 'message': '物体検出モデルの読み込みに失敗しました'})
     else:
         object_detection_enabled = True
+        print("物体検出が有効になりました（モデルは既に読み込み済み）")
         return jsonify({'status': 'enabled', 'message': '物体検出を有効にしました'})
 
 @app.route('/disable_object_detection', methods=['POST'])
@@ -175,13 +183,9 @@ if __name__ == '__main__':
         print("Flaskサーバーを起動しています...")
         print("フロントエンドから http://localhost:5000 にアクセスしてください")
         
-        # 物体検出モデルの初期化を試行
+        # ultralyticsの可用性を確認（初期化は行わない）
         if OBJECT_DETECTION_AVAILABLE:
-            print("物体検出モデルの初期化を試行中...")
-            if initialize_object_detection_model():
-                print("物体検出モデルが正常に読み込まれました")
-            else:
-                print("物体検出モデルの読み込みに失敗しました（オプション機能）")
+            print("ultralyticsが利用可能です。物体検出機能は初回有効化時に読み込まれます。")
         else:
             print("ultralyticsが利用できません。物体検出機能は無効です。")
         

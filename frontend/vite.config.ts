@@ -28,4 +28,8 @@ export default defineConfig({
         : {},
     }),
   ],
+  server: {
+    host: '0.0.0.0', // VPN接続で他端末からアクセス可能にする
+    port: 5173,
+  },
 })

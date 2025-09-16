@@ -6,15 +6,25 @@ function App() {
 	const [objectDetectionEnabled, setObjectDetectionEnabled] = useState(false);
 	const [objectDetectionAvailable, setObjectDetectionAvailable] = useState(false);
 
+	// バックエンドのベースURLを動的に決定する関数
+	const getBackendBaseUrl = () => {
+		// 開発環境では現在のホストを使用（VPN環境でも対応）
+		if (import.meta.env.DEV) {
+			return `http://${window.location.hostname}:5000`;
+		}
+		// 本番環境ではlocalhostを使用
+		return 'http://localhost:5000';
+	};
+
 	// ストリームURLを更新する関数
 	const updateStreamUrl = () => {
-		setStreamUrl(`http://localhost:5000/video_feed?t=${Date.now()}`);
+		setStreamUrl(`${getBackendBaseUrl()}/video_feed?t=${Date.now()}`);
 	};
 
 	// 物体検出状態を取得する関数
 	const checkObjectDetectionStatus = async () => {
 		try {
-			const response = await fetch("http://localhost:5000/object_detection_status");
+			const response = await fetch(`${getBackendBaseUrl()}/object_detection_status`);
 			if (response.ok) {
 				const data = await response.json();
 				console.log("物体検出状態:", data);
@@ -31,7 +41,7 @@ function App() {
 	// 物体検出を有効化
 	const enableObjectDetection = async () => {
 		try {
-			const response = await fetch("http://localhost:5000/enable_object_detection", {
+			const response = await fetch(`${getBackendBaseUrl()}/enable_object_detection`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -61,7 +71,7 @@ function App() {
 	// 物体検出を無効化
 	const disableObjectDetection = async () => {
 		try {
-			const response = await fetch("http://localhost:5000/disable_object_detection", {
+			const response = await fetch(`${getBackendBaseUrl()}/disable_object_detection`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -86,7 +96,7 @@ function App() {
 	// ストリーミング開始
 	const startStream = async () => {
 		try {
-			const response = await fetch("http://localhost:5000/start_stream", {
+			const response = await fetch(`${getBackendBaseUrl()}/start_stream`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -110,7 +120,7 @@ function App() {
 	// ストリーミング停止
 	const stopStream = async () => {
 		try {
-			const response = await fetch("http://localhost:5000/stop_stream", {
+			const response = await fetch(`${getBackendBaseUrl()}/stop_stream`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",

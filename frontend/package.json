@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "vite",
+    "dev:backend": "cd ../backend && .venv\\Scripts\\activate && python main.py",
     "build": "tsc && vite build && electron-builder",
     "build:all": "tsc && vite build && mkdirp backend_exe && cd ../backend && python -m venv .venv && .venv\\Scripts\\activate && pip install -r requirements.txt && pyinstaller --onefile --noconsole --name WebCamApp-Backend --hidden-import ultralytics --hidden-import ultralytics.models --hidden-import ultralytics.utils --collect-all ultralytics --add-data \"models;models\" main.py && copy dist\\WebCamApp-Backend.exe ..\\frontend\\backend_exe\\WebCamApp-Backend.exe && cd ..\\frontend && electron-builder",
     "clean": "rimraf dist dist-electron release backend_exe && cd ../backend && rimraf dist build __pycache__ && del *.spec 2>nul || echo No .spec files found",
@@ -24,6 +26,7 @@
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
     "electron": "^30.0.1",
     "electron-builder": "^24.13.3",
     "eslint": "^8.57.0",
